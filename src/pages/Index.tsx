@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { ModelViewer } from '@/components/ModelViewer';
 import { DropZone } from '@/components/DropZone';
 import { Documentation } from '@/components/Documentation';
-import { Box } from 'lucide-react';
+import { Box, Cloud } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -29,14 +31,22 @@ const Index = () => {
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Box className="w-6 h-6 text-primary" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Box className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold">Photo3D Studio</h1>
+                <p className="text-sm text-muted-foreground">Local Photogrammetry Pipeline</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold">Photo3D Studio</h1>
-              <p className="text-sm text-muted-foreground">Photogrammetry 3D Model Viewer</p>
-            </div>
+            <Link to="/cloud">
+              <Button variant="outline" size="sm">
+                <Cloud className="w-4 h-4 mr-2" />
+                Cloud Pipeline
+              </Button>
+            </Link>
           </div>
         </div>
       </header>
