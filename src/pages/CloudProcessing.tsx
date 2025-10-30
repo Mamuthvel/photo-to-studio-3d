@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import JSZip from 'jszip';
 import { ModelViewer } from '@/components/ModelViewer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -105,12 +106,34 @@ const CloudProcessing = () => {
         throw new Error("Failed to get model download URL");
       }
 
+      // Download the ZIP file
+      const zipResponse = await fetch(result.data.modelUrl);
+      const zipBlob = await zipResponse.blob();
+      
+      // Extract the GLB file from the ZIP
+      const zip = new JSZip();
+      const zipContent = await zip.loadAsync(zipBlob);
+      
+      // Find the GLB file in the zip
+      const glbFile = Object.keys(zipContent.files).find(filename => 
+        filename.toLowerCase().endsWith('.glb')
+      );
+      
+      if (!glbFile) {
+        setFailureReason("No GLB file found in the downloaded package.");
+        throw new Error("No GLB file found in zip");
+      }
+      
+      // Extract and create blob URL
+      const glbBlob = await zipContent.files[glbFile].async('blob');
+      const glbUrl = URL.createObjectURL(glbBlob);
+
       setProgress(100);
       setCurrentStep('complete');
-      setModelUrl(result.data.modelUrl);
+      setModelUrl(glbUrl);
       setEstimatedTime('');
       
-      toast.success("Your 3D model is ready for download!");
+      toast.success("Your 3D model is ready to view!");
     } catch (error) {
       throw error;
     }
