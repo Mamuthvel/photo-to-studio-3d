@@ -4,14 +4,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Cloud, Upload, Zap, DollarSign, ArrowLeft } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Cloud, Upload, Zap, DollarSign, ArrowLeft, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+
+// TODO: Move this to a backend service for better security
+const KIRI_API_KEY = "kiri_N-3gZSOw1fbOzaEOmAfY7z5oyHLmK3iDh4s86AtqBtc";
+const KIRI_BASE_URL = "https://api.kiriengine.app/api/v1/open";
 
 const CloudProcessing = () => {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [photos, setPhotos] = useState<File[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [serialize, setSerialize] = useState<string | null>(null);
 
   const handlePhotosUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -19,20 +26,136 @@ const CloudProcessing = () => {
     toast.success(`Selected ${files.length} photos`);
   };
 
+  const pollModelStatus = async (taskSerialize: string): Promise<boolean> => {
+    const maxAttempts = 60; // 5 minutes with 5-second intervals
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(
+          `${KIRI_BASE_URL}/model/getStatus?serialize=${taskSerialize}`,
+          {
+            headers: { Authorization: `Bearer ${KIRI_API_KEY}` },
+          }
+        );
+
+        const result = await response.json();
+        
+        if (!result.ok) {
+          throw new Error(result.msg || "Failed to check status");
+        }
+
+        const status = result.data.status;
+        
+        // Status: -1=Uploading, 0=Processing, 1=Failed, 2=Successful, 3=Queuing, 4=Expired
+        if (status === 2) {
+          return true; // Success
+        } else if (status === 1) {
+          throw new Error("Processing failed");
+        } else if (status === 4) {
+          throw new Error("Task expired");
+        }
+
+        // Still processing - update progress
+        const progressMap: { [key: number]: number } = { "-1": 20, 3: 30, 0: 50 };
+        setProgress(progressMap[status] || 40);
+        
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    throw new Error("Processing timeout - please try again");
+  };
+
+  const downloadModel = async (taskSerialize: string) => {
+    try {
+      setProgress(90);
+      const response = await fetch(
+        `${KIRI_BASE_URL}/model/getModelZip?serialize=${taskSerialize}`,
+        {
+          headers: { Authorization: `Bearer ${KIRI_API_KEY}` },
+        }
+      );
+
+      const result = await response.json();
+      
+      if (!result.ok || !result.data.modelUrl) {
+        throw new Error("Failed to get model download URL");
+      }
+
+      setProgress(100);
+      setModelUrl(result.data.modelUrl);
+      
+      toast.success("Your 3D model is ready for download!");
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const handleProcess = async () => {
-    if (photos.length < 10) {
-      toast.error('Please upload at least 10 photos for reconstruction');
+    if (photos.length < 20) {
+      toast.error('Please upload at least 20 photos (max 300) for processing');
       return;
     }
-    
+
+    if (photos.length > 300) {
+      toast.error('Please upload no more than 300 photos');
+      return;
+    }
+
     setIsProcessing(true);
-    toast.info('Cloud processing would start here - API integration required');
-    
-    // Simulate processing
-    setTimeout(() => {
+    setProgress(5);
+
+    try {
+      // Create FormData and append images
+      const formData = new FormData();
+      photos.forEach((photo) => {
+        formData.append("imagesFiles", photo);
+      });
+      
+      // Set processing parameters
+      formData.append("modelQuality", "1"); // Medium quality
+      formData.append("textureQuality", "1"); // 2K texture
+      formData.append("fileFormat", "GLB"); // GLB format for web
+      formData.append("isMask", "1"); // Auto object masking
+      formData.append("textureSmoothing", "1"); // Texture smoothing
+
+      setProgress(10);
+      toast.info(`Uploading ${photos.length} photos to Kiri Engine...`);
+
+      // Upload images and start reconstruction
+      const response = await fetch(`${KIRI_BASE_URL}/photo/image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${KIRI_API_KEY}` },
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!result.ok || !result.data.serialize) {
+        throw new Error(result.msg || "Failed to start processing");
+      }
+
+      const taskSerialize = result.data.serialize;
+      setSerialize(taskSerialize);
+      toast.success("Processing started! Reconstructing your 3D model...");
+
+      // Poll for completion
+      await pollModelStatus(taskSerialize);
+
+      // Download the model
+      await downloadModel(taskSerialize);
+
+    } catch (error) {
+      console.error("Processing error:", error);
+      toast.error(error instanceof Error ? error.message : "Processing failed");
+      setProgress(0);
+    } finally {
       setIsProcessing(false);
-      toast.success('Demo: Processing complete! (In production, this would call cloud APIs)');
-    }, 3000);
+    }
   };
 
   return (
@@ -77,7 +200,7 @@ const CloudProcessing = () => {
                   Upload Photos
                 </CardTitle>
                 <CardDescription>
-                  Upload 20-50 photos of your object from different angles
+                  Upload 20-300 photos of your object from different angles
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -100,22 +223,37 @@ const CloudProcessing = () => {
 
                 <Button 
                   onClick={handleProcess}
-                  disabled={photos.length < 10 || isProcessing}
+                  disabled={photos.length < 20 || photos.length > 300 || isProcessing}
                   className="w-full"
                   size="lg"
                 >
                   {isProcessing ? (
                     <>
-                      <Zap className="w-4 h-4 mr-2 animate-pulse" />
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Processing...
                     </>
                   ) : (
                     <>
                       <Cloud className="w-4 h-4 mr-2" />
-                      Process in Cloud
+                      Process with Kiri Engine
                     </>
                   )}
                 </Button>
+
+                {isProcessing && (
+                  <div className="space-y-2">
+                    <Progress value={progress} className="w-full" />
+                    <p className="text-sm text-center text-muted-foreground">
+                      {progress}% complete
+                    </p>
+                  </div>
+                )}
+
+                {serialize && (
+                  <p className="text-xs text-muted-foreground">
+                    Task ID: {serialize}
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -134,7 +272,22 @@ const CloudProcessing = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="p-3 bg-accent/10 rounded-lg border border-accent/20 mb-4">
+                  <p className="text-sm font-medium text-accent mb-1">✓ Currently Active</p>
+                  <p className="text-xs text-muted-foreground">
+                    Using Kiri Engine API for 3D reconstruction
+                  </p>
+                </div>
+                
                 <div className="space-y-3">
+                  <ServiceCard
+                    name="Kiri Engine API"
+                    description="AI-powered 3D scanning - Currently integrated"
+                    pricing="API-based processing"
+                    features={['Auto Object Masking', '2K-8K textures', 'GLB export', 'Multiple quality options']}
+                    link="https://www.kiriengine.com/"
+                  />
+                  
                   <ServiceCard
                     name="Polycam API"
                     description="High-quality 3D reconstruction"
@@ -150,14 +303,6 @@ const CloudProcessing = () => {
                     features={['Large datasets', 'Batch processing', 'API support']}
                     link="https://photocatch.app"
                   />
-                  
-                  <ServiceCard
-                    name="Sketchfab"
-                    description="3D model processing & hosting"
-                    pricing="Free - $99/mo"
-                    features={['Auto optimization', 'Web viewer', 'Model hosting']}
-                    link="https://sketchfab.com/developers"
-                  />
                 </div>
               </CardContent>
             </Card>
@@ -172,19 +317,19 @@ const CloudProcessing = () => {
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <div className="space-y-2">
-                  <p className="font-medium">To enable cloud processing:</p>
+                  <p className="font-medium">How it works:</p>
                   <ol className="space-y-2 ml-6 list-decimal text-muted-foreground">
-                    <li>Choose a photogrammetry API service</li>
-                    <li>Enable Lovable Cloud for backend</li>
-                    <li>Add API keys to Cloud secrets</li>
-                    <li>Create Edge Functions for API calls</li>
-                    <li>Upload photos & poll for results</li>
+                    <li>Upload 20-300 photos of your object</li>
+                    <li>Photos are sent to Kiri Engine API</li>
+                    <li>AI reconstructs 3D model with textures</li>
+                    <li>Progress is tracked in real-time</li>
+                    <li>Download GLB model when ready</li>
                   </ol>
                 </div>
 
-                <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
                   <p className="text-xs">
-                    💡 <strong>Note:</strong> This is a demo interface. API integration requires Lovable Cloud and service API keys.
+                    ✨ <strong>Live Integration:</strong> This page uses the Kiri Engine API with real 3D reconstruction.
                   </p>
                 </div>
               </CardContent>
