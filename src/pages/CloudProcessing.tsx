@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Cloud, Upload, Zap, DollarSign, ArrowLeft, Loader2 } from 'lucide-react';
+import { Cloud, Upload, Zap, DollarSign, ArrowLeft, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -13,12 +13,17 @@ import { toast } from 'sonner';
 const KIRI_API_KEY = "kiri_N-3gZSOw1fbOzaEOmAfY7z5oyHLmK3iDh4s86AtqBtc";
 const KIRI_BASE_URL = "https://api.kiriengine.app/api/v1/open";
 
+type ProcessingStep = 'idle' | 'uploading' | 'sending' | 'processing' | 'downloading' | 'complete' | 'failed';
+
 const CloudProcessing = () => {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [photos, setPhotos] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
   const [serialize, setSerialize] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState<ProcessingStep>('idle');
+  const [failureReason, setFailureReason] = useState<string | null>(null);
+  const [estimatedTime, setEstimatedTime] = useState<string>('');
 
   const handlePhotosUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -27,8 +32,11 @@ const CloudProcessing = () => {
   };
 
   const pollModelStatus = async (taskSerialize: string): Promise<boolean> => {
-    const maxAttempts = 60; // 5 minutes with 5-second intervals
+    const maxAttempts = 30; // 5 minutes with 10-second intervals
     let attempts = 0;
+
+    setCurrentStep('processing');
+    setEstimatedTime('~2-5 minutes');
 
     while (attempts < maxAttempts) {
       try {
@@ -51,28 +59,38 @@ const CloudProcessing = () => {
         if (status === 2) {
           return true; // Success
         } else if (status === 1) {
+          setFailureReason("Model processing failed. Please check your images and try again.");
           throw new Error("Processing failed");
         } else if (status === 4) {
+          setFailureReason("Processing task expired. Please try uploading again.");
           throw new Error("Task expired");
         }
 
         // Still processing - update progress
-        const progressMap: { [key: number]: number } = { "-1": 20, 3: 30, 0: 50 };
-        setProgress(progressMap[status] || 40);
+        const progressMap: { [key: number]: number } = { "-1": 30, 3: 40, 0: 60 };
+        setProgress(progressMap[status] || 50);
+        
+        // Update estimated time based on attempts
+        const remainingMinutes = Math.max(1, 5 - Math.floor((attempts * 10) / 60));
+        setEstimatedTime(`~${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''} remaining`);
         
         attempts++;
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second intervals
       } catch (error) {
         throw error;
       }
     }
 
+    setFailureReason("Processing timeout - the operation took too long. Please try again with fewer or smaller images.");
     throw new Error("Processing timeout - please try again");
   };
 
   const downloadModel = async (taskSerialize: string) => {
     try {
+      setCurrentStep('downloading');
       setProgress(90);
+      setEstimatedTime('~30 seconds');
+      
       const response = await fetch(
         `${KIRI_BASE_URL}/model/getModelZip?serialize=${taskSerialize}`,
         {
@@ -83,11 +101,14 @@ const CloudProcessing = () => {
       const result = await response.json();
       
       if (!result.ok || !result.data.modelUrl) {
+        setFailureReason("Failed to retrieve the model download URL. Please try again.");
         throw new Error("Failed to get model download URL");
       }
 
       setProgress(100);
+      setCurrentStep('complete');
       setModelUrl(result.data.modelUrl);
+      setEstimatedTime('');
       
       toast.success("Your 3D model is ready for download!");
     } catch (error) {
@@ -107,7 +128,10 @@ const CloudProcessing = () => {
     }
 
     setIsProcessing(true);
-    setProgress(5);
+    setProgress(0);
+    setCurrentStep('uploading');
+    setFailureReason(null);
+    setEstimatedTime('~1 minute');
 
     try {
       // Create FormData and append images
@@ -126,6 +150,9 @@ const CloudProcessing = () => {
       setProgress(10);
       toast.info(`Uploading ${photos.length} photos to Kiri Engine...`);
 
+      setCurrentStep('sending');
+      setProgress(20);
+      
       // Upload images and start reconstruction
       const response = await fetch(`${KIRI_BASE_URL}/photo/image`, {
         method: "POST",
@@ -136,11 +163,13 @@ const CloudProcessing = () => {
       const result = await response.json();
 
       if (!result.ok || !result.data.serialize) {
+        setFailureReason(result.msg || "Failed to start processing. Please check your images and try again.");
         throw new Error(result.msg || "Failed to start processing");
       }
 
       const taskSerialize = result.data.serialize;
       setSerialize(taskSerialize);
+      setProgress(25);
       toast.success("Processing started! Reconstructing your 3D model...");
 
       // Poll for completion
@@ -151,8 +180,8 @@ const CloudProcessing = () => {
 
     } catch (error) {
       console.error("Processing error:", error);
+      setCurrentStep('failed');
       toast.error(error instanceof Error ? error.message : "Processing failed");
-      setProgress(0);
     } finally {
       setIsProcessing(false);
     }
@@ -240,19 +269,78 @@ const CloudProcessing = () => {
                   )}
                 </Button>
 
-                {isProcessing && (
-                  <div className="space-y-2">
-                    <Progress value={progress} className="w-full" />
-                    <p className="text-sm text-center text-muted-foreground">
-                      {progress}% complete
-                    </p>
-                  </div>
-                )}
+                {(isProcessing || currentStep === 'complete' || currentStep === 'failed') && (
+                  <div className="space-y-4 mt-6">
+                    {/* Progress Timeline */}
+                    <div className="space-y-3">
+                      <ProcessingStep
+                        icon={Upload}
+                        label="Uploading"
+                        status={getStepStatus('uploading', currentStep)}
+                      />
+                      <ProcessingStep
+                        icon={Cloud}
+                        label="Sending to Kiri Engine"
+                        status={getStepStatus('sending', currentStep)}
+                      />
+                      <ProcessingStep
+                        icon={Loader2}
+                        label="Processing"
+                        status={getStepStatus('processing', currentStep)}
+                        isAnimated
+                      />
+                      <ProcessingStep
+                        icon={Download}
+                        label="Downloading Model"
+                        status={getStepStatus('downloading', currentStep)}
+                      />
+                      <ProcessingStep
+                        icon={currentStep === 'failed' ? XCircle : CheckCircle2}
+                        label={currentStep === 'failed' ? 'Failed' : 'Reconstruction Complete'}
+                        status={getStepStatus('complete', currentStep)}
+                      />
+                    </div>
 
-                {serialize && (
-                  <p className="text-xs text-muted-foreground">
-                    Task ID: {serialize}
-                  </p>
+                    {/* Progress Bar */}
+                    {isProcessing && (
+                      <div className="space-y-2">
+                        <Progress value={progress} className="w-full" />
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">{progress}% complete</span>
+                          {estimatedTime && (
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {estimatedTime}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Failure Message */}
+                    {currentStep === 'failed' && failureReason && (
+                      <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                        <p className="text-sm text-destructive font-medium mb-1">Processing Failed</p>
+                        <p className="text-xs text-muted-foreground">{failureReason}</p>
+                      </div>
+                    )}
+
+                    {/* Success Message */}
+                    {currentStep === 'complete' && (
+                      <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                        <p className="text-sm text-primary font-medium">✅ 3D Model Ready!</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Your model has been successfully reconstructed and is displayed above.
+                        </p>
+                      </div>
+                    )}
+
+                    {serialize && (
+                      <p className="text-xs text-muted-foreground">
+                        Task ID: {serialize}
+                      </p>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -371,5 +459,69 @@ const ServiceCard = ({ name, description, pricing, features, link }: ServiceCard
     </a>
   </div>
 );
+
+interface ProcessingStepProps {
+  icon: React.ElementType;
+  label: string;
+  status: 'pending' | 'active' | 'complete' | 'failed';
+  isAnimated?: boolean;
+}
+
+const ProcessingStep = ({ icon: Icon, label, status, isAnimated }: ProcessingStepProps) => {
+  const getStatusColor = () => {
+    switch (status) {
+      case 'complete':
+        return 'text-primary';
+      case 'active':
+        return 'text-accent';
+      case 'failed':
+        return 'text-destructive';
+      default:
+        return 'text-muted-foreground';
+    }
+  };
+
+  const getIconBg = () => {
+    switch (status) {
+      case 'complete':
+        return 'bg-primary/10';
+      case 'active':
+        return 'bg-accent/10';
+      case 'failed':
+        return 'bg-destructive/10';
+      default:
+        return 'bg-muted';
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`p-2 rounded-lg ${getIconBg()}`}>
+        <Icon className={`w-4 h-4 ${getStatusColor()} ${isAnimated && status === 'active' ? 'animate-spin' : ''}`} />
+      </div>
+      <span className={`text-sm font-medium ${getStatusColor()}`}>
+        {label}
+      </span>
+      {status === 'complete' && <CheckCircle2 className="w-4 h-4 text-primary ml-auto" />}
+      {status === 'failed' && <XCircle className="w-4 h-4 text-destructive ml-auto" />}
+    </div>
+  );
+};
+
+const getStepStatus = (step: string, currentStep: ProcessingStep): 'pending' | 'active' | 'complete' | 'failed' => {
+  const steps = ['uploading', 'sending', 'processing', 'downloading', 'complete'];
+  const currentIndex = steps.indexOf(currentStep);
+  const stepIndex = steps.indexOf(step);
+
+  if (currentStep === 'failed') {
+    if (stepIndex < currentIndex) return 'complete';
+    if (step === 'complete') return 'failed';
+    return 'pending';
+  }
+
+  if (stepIndex < currentIndex) return 'complete';
+  if (stepIndex === currentIndex) return 'active';
+  return 'pending';
+};
 
 export default CloudProcessing;
