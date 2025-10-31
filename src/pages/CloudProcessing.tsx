@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 // TODO: Move this to a backend service for better security
-const KIRI_API_KEY = "kiri_N-3gZSOw1fbOzaEOmAfY7z5oyHLmK3iDh4s86AtqBtc";
+const KIRI_API_KEY = "kiri_R5x1ZJ7C52R5MRwowSzkw_azeEXhWOOGgoL7uith5OM";
 const KIRI_BASE_URL = "https://api.kiriengine.app/api/v1/open";
 
 type ProcessingStep = 'idle' | 'uploading' | 'sending' | 'processing' | 'downloading' | 'complete' | 'failed';
@@ -145,13 +145,15 @@ const CloudProcessing = () => {
       const glbBlob = await zipContent.files[glbFile].async('blob');
       const glbUrl = URL.createObjectURL(glbBlob);
 
-      setProgress(100);
-      setCurrentStep('complete');
       setModelUrl(glbUrl);
+      setProgress(100);
       setEstimatedTime('');
+      setCurrentStep('complete');
       
       toast.success("Your 3D model is ready to view!");
     } catch (error) {
+      setCurrentStep('failed');
+      setFailureReason("Failed to download or extract the model file.");
       throw error;
     }
   };

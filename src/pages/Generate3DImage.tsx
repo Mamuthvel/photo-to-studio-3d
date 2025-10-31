@@ -12,8 +12,8 @@ const MESHY_BASE_URL = 'https://api.meshy.ai/openapi/v1';
 type ProcessingStep = 'idle' | 'uploading' | 'sending' | 'processing' | 'downloading' | 'complete' | 'failed';
 
 export default function Generate3DImage() {
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -23,18 +23,36 @@ export default function Generate3DImage() {
   const [estimatedTime, setEstimatedTime] = useState<string>('');
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    if (!file.type.match(/^image\/(jpeg|jpg|png)$/)) {
-      toast.error("Please select a JPG or PNG image");
-      return;
+    const validFiles = files.filter(file => file.type.match(/^image\/(jpeg|jpg|png)$/));
+    
+    if (validFiles.length !== files.length) {
+      toast.error("Some files were skipped. Please select only JPG or PNG images");
     }
 
-    setSelectedImage(file);
-    const reader = new FileReader();
-    reader.onload = (e) => setImagePreview(e.target?.result as string);
-    reader.readAsDataURL(file);
+    if (validFiles.length === 0) return;
+
+    setSelectedImages(validFiles);
+    
+    // Generate previews for all images
+    const previews: string[] = [];
+    let loadedCount = 0;
+    
+    validFiles.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previews.push(e.target?.result as string);
+        loadedCount++;
+        if (loadedCount === validFiles.length) {
+          setImagePreviews(previews);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    toast.success(`Selected ${validFiles.length} image${validFiles.length > 1 ? 's' : ''}`);
   };
 
   const convertToBase64 = (file: File): Promise<string> => {
@@ -113,8 +131,8 @@ export default function Generate3DImage() {
   };
 
   const handleGenerate = async () => {
-    if (!selectedImage) {
-      toast.error("Please select an image first");
+    if (selectedImages.length === 0) {
+      toast.error("Please select at least one image");
       return;
     }
 
@@ -122,12 +140,16 @@ export default function Generate3DImage() {
     setProgress(0);
     setCurrentStep('uploading');
     setFailureReason(null);
-    setEstimatedTime('Preparing image...');
+    setEstimatedTime('Preparing images...');
 
     try {
-      // Convert image to base64
-      const base64Image = await convertToBase64(selectedImage);
+      // Convert first image to base64 (Meshy currently only supports single image input)
+      const base64Image = await convertToBase64(selectedImages[0]);
       setProgress(20);
+
+      if (selectedImages.length > 1) {
+        toast.info(`Using first image for generation. Multi-image support coming soon!`);
+      }
 
       setCurrentStep('sending');
       setEstimatedTime('Sending to Meshy AI...');
@@ -239,9 +261,9 @@ export default function Generate3DImage() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Upload Image</CardTitle>
+                <CardTitle>Upload Images</CardTitle>
                 <CardDescription>
-                  Select a JPG or PNG image to generate a 3D model
+                  Select one or more JPG or PNG images to generate a 3D model
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -249,19 +271,34 @@ export default function Generate3DImage() {
                   <Input
                     type="file"
                     accept="image/jpeg,image/jpg,image/png"
+                    multiple
                     onChange={handleImageSelect}
                     className="hidden"
                     id="image-upload"
                     disabled={isProcessing}
                   />
                   <label htmlFor="image-upload" className="cursor-pointer">
-                    {imagePreview ? (
-                      <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg" />
+                    {imagePreviews.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2 justify-center">
+                          {imagePreviews.map((preview, idx) => (
+                            <img 
+                              key={idx} 
+                              src={preview} 
+                              alt={`Preview ${idx + 1}`} 
+                              className="w-20 h-20 object-cover rounded-lg border border-border"
+                            />
+                          ))}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedImages.length} image{selectedImages.length > 1 ? 's' : ''} selected
+                        </p>
+                      </div>
                     ) : (
                       <>
                         <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                         <p className="text-sm text-muted-foreground">
-                          Click to select an image
+                          Click to select images
                         </p>
                       </>
                     )}
@@ -270,7 +307,7 @@ export default function Generate3DImage() {
 
                 <Button 
                   onClick={handleGenerate}
-                  disabled={!selectedImage || isProcessing}
+                  disabled={selectedImages.length === 0 || isProcessing}
                   className="w-full"
                   size="lg"
                 >
@@ -389,7 +426,7 @@ export default function Generate3DImage() {
                     <div className="text-center space-y-2">
                       <div className="text-5xl">🎨</div>
                       <p className="text-muted-foreground text-sm">
-                        Upload an image to generate a 3D model
+                        Upload images to generate a 3D model
                       </p>
                     </div>
                   </div>
