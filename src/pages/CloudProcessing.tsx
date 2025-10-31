@@ -48,7 +48,15 @@ const CloudProcessing = () => {
           }
         );
 
-        const result = await response.json();
+        let result;
+        try {
+          const text = await response.text();
+          const cleanText = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+          result = JSON.parse(cleanText);
+        } catch (parseError) {
+          console.error("Failed to parse status response:", parseError);
+          throw new Error("Failed to parse status response");
+        }
         
         if (!result.ok) {
           throw new Error(result.msg || "Failed to check status");
@@ -99,9 +107,18 @@ const CloudProcessing = () => {
         }
       );
 
-      const result = await response.json();
+      let result;
+      try {
+        const text = await response.text();
+        const cleanText = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        result = JSON.parse(cleanText);
+      } catch (parseError) {
+        console.error("Failed to parse download response:", parseError);
+        setFailureReason("Failed to retrieve the model download URL. Please try again.");
+        throw new Error("Failed to parse download response");
+      }
       
-      if (!result.ok || !result.data.modelUrl) {
+      if (!result.ok || !result.data?.modelUrl) {
         setFailureReason("Failed to retrieve the model download URL. Please try again.");
         throw new Error("Failed to get model download URL");
       }
@@ -183,11 +200,27 @@ const CloudProcessing = () => {
         body: formData,
       });
 
-      const result = await response.json();
+      let result;
+      try {
+        const text = await response.text();
+        // Clean any control characters from the response
+        const cleanText = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+        result = JSON.parse(cleanText);
+      } catch (parseError) {
+        console.error("Failed to parse API response:", parseError);
+        setFailureReason("Failed to communicate with Kiri Engine. Please check your API key and try again.");
+        throw new Error("Failed to parse API response");
+      }
 
-      if (!result.ok || !result.data.serialize) {
-        setFailureReason(result.msg || "Failed to start processing. Please check your images and try again.");
-        throw new Error(result.msg || "Failed to start processing");
+      if (!response.ok || !result.ok) {
+        const errorMsg = result.msg || result.message || `API error (${response.status})`;
+        setFailureReason(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      if (!result.data?.serialize) {
+        setFailureReason("Failed to start processing. Please check your images and try again.");
+        throw new Error("No task ID received from API");
       }
 
       const taskSerialize = result.data.serialize;
