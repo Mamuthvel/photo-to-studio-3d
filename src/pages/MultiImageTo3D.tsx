@@ -4,17 +4,29 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Upload, Loader2, CheckCircle2, XCircle, Clock, Download, Image as ImageIcon } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, XCircle, Clock, Download, Image as ImageIcon, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const MESHY_API_KEY = 'msy_5EgIin5cwzjgz48rlA7cCtEw5MnXfRYn88pS';
 const MESHY_BASE_URL = 'https://api.meshy.ai/openapi/v1';
 
 type ProcessingStep = 'idle' | 'uploading' | 'sending' | 'processing' | 'downloading' | 'complete' | 'failed';
+type AngleType = 'front' | 'side' | 'back' | 'top';
+
+interface ImageSlot {
+  angle: AngleType;
+  label: string;
+  file: File | null;
+  preview: string | null;
+}
 
 export default function MultiImageTo3D() {
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
-  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [imageSlots, setImageSlots] = useState<ImageSlot[]>([
+    { angle: 'front', label: 'Front View', file: null, preview: null },
+    { angle: 'side', label: 'Side View', file: null, preview: null },
+    { angle: 'back', label: 'Back View', file: null, preview: null },
+    { angle: 'top', label: 'Top View', file: null, preview: null },
+  ]);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -24,43 +36,38 @@ export default function MultiImageTo3D() {
   const [estimatedTime, setEstimatedTime] = useState<string>('');
   const [progressMessage, setProgressMessage] = useState<string>('');
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+  const handleImageSelect = (angle: AngleType, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (files.length > 4) {
-      toast.error("Maximum 4 images allowed. Only the first 4 will be selected.");
-      files.splice(4);
+    if (!file.type.match(/^image\/(jpeg|jpg|png)$/)) {
+      toast.error("Please select only JPG or PNG images");
+      return;
     }
 
-    const validFiles = files.filter(file => file.type.match(/^image\/(jpeg|jpg|png)$/));
-    
-    if (validFiles.length !== files.length) {
-      toast.error("Some files were skipped. Please select only JPG or PNG images");
-    }
-
-    if (validFiles.length === 0) return;
-
-    setSelectedImages(validFiles);
-    
-    // Generate previews for all images
-    const previews: string[] = [];
-    let loadedCount = 0;
-    
-    validFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        previews.push(e.target?.result as string);
-        loadedCount++;
-        if (loadedCount === validFiles.length) {
-          setImagePreviews(previews);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-
-    toast.success(`Selected ${validFiles.length} image${validFiles.length > 1 ? 's' : ''}`);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImageSlots(prev => prev.map(slot => 
+        slot.angle === angle 
+          ? { ...slot, file, preview: event.target?.result as string }
+          : slot
+      ));
+      
+      const slotLabel = imageSlots.find(s => s.angle === angle)?.label;
+      toast.success(`${slotLabel} image added`);
+    };
+    reader.readAsDataURL(file);
   };
+
+  const handleRemoveImage = (angle: AngleType) => {
+    setImageSlots(prev => prev.map(slot => 
+      slot.angle === angle 
+        ? { ...slot, file: null, preview: null }
+        : slot
+    ));
+  };
+
+  const getUploadedCount = () => imageSlots.filter(slot => slot.file !== null).length;
 
   const convertToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -152,8 +159,10 @@ export default function MultiImageTo3D() {
   };
 
   const handleGenerate = async () => {
-    if (selectedImages.length === 0) {
-      toast.error("Please select at least 1 image (up to 4 images recommended)");
+    const uploadedImages = imageSlots.filter(slot => slot.file !== null);
+    
+    if (uploadedImages.length === 0) {
+      toast.error("Please upload at least 1 image (2-4 images recommended for best results)");
       return;
     }
 
@@ -165,9 +174,9 @@ export default function MultiImageTo3D() {
     setProgressMessage('Converting images...');
 
     try {
-      // Convert all images to base64
+      // Convert all uploaded images to base64
       const base64Images = await Promise.all(
-        selectedImages.map(img => convertToBase64(img))
+        uploadedImages.map(slot => convertToBase64(slot.file!))
       );
       setProgress(20);
 
@@ -294,60 +303,71 @@ export default function MultiImageTo3D() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Upload Images (1-4)</CardTitle>
+                <CardTitle>Upload Images</CardTitle>
                 <CardDescription>
-                  Select 1-4 images showing the same object from different angles (front, side, back, top)
+                  Upload 1-4 images of the same object from different angles for best results
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                  <Input
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png"
-                    multiple
-                    onChange={handleImageSelect}
-                    className="hidden"
-                    id="image-upload"
-                    disabled={isProcessing}
-                  />
-                  <label htmlFor="image-upload" className="cursor-pointer">
-                    {imagePreviews.length > 0 ? (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                          {imagePreviews.map((preview, idx) => (
-                            <div key={idx} className="relative">
+              <CardContent className="space-y-6">
+                {/* Multi-view Upload Slots */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium">Multi-view</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {getUploadedCount()}/4 images
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {imageSlots.map((slot) => (
+                      <div key={slot.angle} className="space-y-2">
+                        <label className="text-xs text-muted-foreground">{slot.label}</label>
+                        <div className="relative aspect-square border-2 border-dashed border-border rounded-lg overflow-hidden bg-muted/20 hover:bg-muted/30 transition-colors">
+                          {slot.preview ? (
+                            <>
                               <img 
-                                src={preview} 
-                                alt={`Preview ${idx + 1}`} 
-                                className="w-full h-32 object-cover rounded-lg border border-border"
+                                src={slot.preview} 
+                                alt={slot.label}
+                                className="w-full h-full object-cover"
                               />
-                              <div className="absolute top-2 left-2 bg-background/80 px-2 py-1 rounded text-xs font-medium">
-                                Image {idx + 1}
-                              </div>
-                            </div>
-                          ))}
+                              <button
+                                onClick={() => handleRemoveImage(slot.angle)}
+                                disabled={isProcessing}
+                                className="absolute top-2 right-2 p-1 bg-background/80 hover:bg-background rounded-full transition-colors disabled:opacity-50"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <Input
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png"
+                                onChange={(e) => handleImageSelect(slot.angle, e)}
+                                className="hidden"
+                                id={`upload-${slot.angle}`}
+                                disabled={isProcessing}
+                              />
+                              <label 
+                                htmlFor={`upload-${slot.angle}`}
+                                className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer"
+                              >
+                                <Upload className="w-8 h-8 text-muted-foreground mb-2" />
+                                <span className="text-xs text-muted-foreground">Upload</span>
+                              </label>
+                            </>
+                          )}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          {selectedImages.length} image{selectedImages.length > 1 ? 's' : ''} selected
-                        </p>
                       </div>
-                    ) : (
-                      <>
-                        <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Click to select 1-4 images
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          JPG or PNG • Different angles recommended
-                        </p>
-                      </>
-                    )}
-                  </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    💡 Tip: Upload at least 2 images from different angles for better 3D reconstruction
+                  </p>
                 </div>
 
                 <Button 
                   onClick={handleGenerate}
-                  disabled={selectedImages.length === 0 || isProcessing}
+                  disabled={getUploadedCount() === 0 || isProcessing}
                   className="w-full"
                   size="lg"
                 >
@@ -359,7 +379,7 @@ export default function MultiImageTo3D() {
                   ) : (
                     <>
                       <ImageIcon className="w-4 h-4 mr-2" />
-                      Generate 3D Model
+                      Generate 3D Model ({getUploadedCount()} images)
                     </>
                   )}
                 </Button>
