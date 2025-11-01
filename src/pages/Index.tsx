@@ -41,12 +41,20 @@ const Index = () => {
                 <p className="text-sm text-muted-foreground">Local Photogrammetry Pipeline</p>
               </div>
             </div>
-            <Link to="/cloud">
-              <Button variant="outline" size="sm">
-                <Cloud className="w-4 h-4 mr-2" />
-                Cloud Pipeline
-              </Button>
-            </Link>
+            <div className="flex gap-2">
+              <Link to="/multi-image-to-3d">
+                <Button variant="outline" size="sm">
+                  <Box className="w-4 h-4 mr-2" />
+                  Multi-Image 3D
+                </Button>
+              </Link>
+              <Link to="/cloud">
+                <Button variant="outline" size="sm">
+                  <Cloud className="w-4 h-4 mr-2" />
+                  Cloud Pipeline
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

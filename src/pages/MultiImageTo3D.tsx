@@ -4,14 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Upload, Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, XCircle, Clock, Download, Image as ImageIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const MESHY_API_KEY = 'msy_5EgIin5cwzjgz48rlA7cCtEw5MnXfRYn88pS';
 const MESHY_BASE_URL = 'https://api.meshy.ai/openapi/v1';
 
 type ProcessingStep = 'idle' | 'uploading' | 'sending' | 'processing' | 'downloading' | 'complete' | 'failed';
 
-export default function Generate3DImage() {
+export default function MultiImageTo3D() {
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -21,10 +22,16 @@ export default function Generate3DImage() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [estimatedTime, setEstimatedTime] = useState<string>('');
+  const [progressMessage, setProgressMessage] = useState<string>('');
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+
+    if (files.length > 4) {
+      toast.error("Maximum 4 images allowed. Only the first 4 will be selected.");
+      files.splice(4);
+    }
 
     const validFiles = files.filter(file => file.type.match(/^image\/(jpeg|jpg|png)$/));
     
@@ -67,13 +74,14 @@ export default function Generate3DImage() {
   const pollTaskStatus = async (taskId: string) => {
     setCurrentStep('processing');
     setEstimatedTime('~5-10 minutes');
+    setProgressMessage('Starting generation...');
     
     const maxAttempts = 120; // Poll for up to 20 minutes
     let attempts = 0;
 
     while (attempts < maxAttempts) {
       try {
-        const response = await fetch(`${MESHY_BASE_URL}/image-to-3d/${taskId}`, {
+        const response = await fetch(`${MESHY_BASE_URL}/multi-image-to-3d/${taskId}`, {
           headers: {
             'Authorization': `Bearer ${MESHY_API_KEY}`,
           },
@@ -83,18 +91,30 @@ export default function Generate3DImage() {
         
         if (result.status === 'SUCCEEDED') {
           setProgress(90);
+          setProgressMessage('Generation complete!');
           await downloadModel(result.model_urls.glb);
           return;
         } else if (result.status === 'FAILED') {
           setCurrentStep('failed');
-          setFailureReason(result.error || "Model generation failed");
-          throw new Error(result.error || "Generation failed");
+          setFailureReason(result.task_error?.message || "Model generation failed");
+          throw new Error(result.task_error?.message || "Generation failed");
         }
 
-        // Update progress based on status
-        if (result.status === 'IN_PROGRESS') {
-          const progressPercent = Math.min(50 + (attempts * 0.5), 85);
+        // Update progress based on status and progress field
+        if (result.status === 'IN_PROGRESS' || result.status === 'PENDING') {
+          const apiProgress = result.progress || 0;
+          const baseProgress = 30;
+          const progressPercent = Math.min(baseProgress + (apiProgress * 0.6), 85);
           setProgress(progressPercent);
+          
+          // Update progress message based on stage
+          if (apiProgress < 30) {
+            setProgressMessage('Remeshing model...');
+          } else if (apiProgress < 70) {
+            setProgressMessage('Texturing model...');
+          } else {
+            setProgressMessage('Finalizing details...');
+          }
         }
 
         const remainingTime = Math.max(1, Math.ceil((maxAttempts - attempts) * 10 / 60));
@@ -117,6 +137,7 @@ export default function Generate3DImage() {
     try {
       setCurrentStep('downloading');
       setEstimatedTime('Downloading model...');
+      setProgressMessage('Model ready!');
       setProgress(95);
 
       setModelUrl(glbUrl);
@@ -124,7 +145,7 @@ export default function Generate3DImage() {
       setCurrentStep('complete');
       setEstimatedTime('');
       
-      toast.success("Your 3D model is ready to view!");
+      toast.success("Your 3D model is ready!");
     } catch (error) {
       throw error;
     }
@@ -132,7 +153,7 @@ export default function Generate3DImage() {
 
   const handleGenerate = async () => {
     if (selectedImages.length === 0) {
-      toast.error("Please select at least one image");
+      toast.error("Please select at least 1 image (up to 4 images recommended)");
       return;
     }
 
@@ -141,31 +162,30 @@ export default function Generate3DImage() {
     setCurrentStep('uploading');
     setFailureReason(null);
     setEstimatedTime('Preparing images...');
+    setProgressMessage('Converting images...');
 
     try {
-      // Convert first image to base64 (Meshy currently only supports single image input)
-      const base64Image = await convertToBase64(selectedImages[0]);
+      // Convert all images to base64
+      const base64Images = await Promise.all(
+        selectedImages.map(img => convertToBase64(img))
+      );
       setProgress(20);
-
-      if (selectedImages.length > 1) {
-        toast.info(`Using first image for generation. Multi-image support coming soon!`);
-      }
 
       setCurrentStep('sending');
       setEstimatedTime('Sending to Meshy AI...');
+      setProgressMessage('Uploading to Meshy AI...');
 
-      // Create Image to 3D task
-      const response = await fetch(`${MESHY_BASE_URL}/image-to-3d`, {
+      // Create Multi-Image to 3D task
+      const response = await fetch(`${MESHY_BASE_URL}/multi-image-to-3d`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${MESHY_API_KEY}`,
         },
         body: JSON.stringify({
-          image_url: base64Image,
-          ai_model: 'meshy-5',
-          topology: 'triangle',
-          target_polycount: 30000,
+          image_urls: base64Images,
+          should_remesh: true,
+          should_texture: true,
           enable_pbr: true,
         }),
       });
@@ -197,6 +217,12 @@ export default function Generate3DImage() {
     }
   };
 
+  const handleDownload = () => {
+    if (modelUrl) {
+      window.open(modelUrl, '_blank');
+    }
+  };
+
   const getStepStatus = (step: ProcessingStep): 'pending' | 'active' | 'complete' | 'failed' => {
     const steps: ProcessingStep[] = ['uploading', 'sending', 'processing', 'downloading', 'complete'];
     const currentIndex = steps.indexOf(currentStep);
@@ -208,7 +234,7 @@ export default function Generate3DImage() {
     return 'pending';
   };
 
-  const ProcessingStep = ({ 
+  const ProcessingStepComponent = ({ 
     step, 
     label, 
     icon: Icon 
@@ -249,11 +275,18 @@ export default function Generate3DImage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <header className="mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary via-glow to-primary bg-clip-text text-transparent">
-            Generate 3D from Image
-          </h1>
-          <p className="text-muted-foreground">Transform a single image into a complete 3D model using Meshy AI</p>
+        <header className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary via-glow to-primary bg-clip-text text-transparent">
+              Multi-Image to 3D
+            </h1>
+            <p className="text-muted-foreground">Upload 1-4 images of an object from different angles to create a 3D model</p>
+          </div>
+          <Link to="/">
+            <Button variant="outline">
+              Back to Home
+            </Button>
+          </Link>
         </header>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -261,9 +294,9 @@ export default function Generate3DImage() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Upload Images</CardTitle>
+                <CardTitle>Upload Images (1-4)</CardTitle>
                 <CardDescription>
-                  Select one or more JPG or PNG images to generate a 3D model
+                  Select 1-4 images showing the same object from different angles (front, side, back, top)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -279,15 +312,19 @@ export default function Generate3DImage() {
                   />
                   <label htmlFor="image-upload" className="cursor-pointer">
                     {imagePreviews.length > 0 ? (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap gap-2 justify-center">
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
                           {imagePreviews.map((preview, idx) => (
-                            <img 
-                              key={idx} 
-                              src={preview} 
-                              alt={`Preview ${idx + 1}`} 
-                              className="w-20 h-20 object-cover rounded-lg border border-border"
-                            />
+                            <div key={idx} className="relative">
+                              <img 
+                                src={preview} 
+                                alt={`Preview ${idx + 1}`} 
+                                className="w-full h-32 object-cover rounded-lg border border-border"
+                              />
+                              <div className="absolute top-2 left-2 bg-background/80 px-2 py-1 rounded text-xs font-medium">
+                                Image {idx + 1}
+                              </div>
+                            </div>
                           ))}
                         </div>
                         <p className="text-sm text-muted-foreground">
@@ -297,8 +334,11 @@ export default function Generate3DImage() {
                     ) : (
                       <>
                         <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                          Click to select images
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Click to select 1-4 images
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          JPG or PNG • Different angles recommended
                         </p>
                       </>
                     )}
@@ -317,7 +357,10 @@ export default function Generate3DImage() {
                       Processing...
                     </>
                   ) : (
-                    'Generate 3D Model'
+                    <>
+                      <ImageIcon className="w-4 h-4 mr-2" />
+                      Generate 3D Model
+                    </>
                   )}
                 </Button>
               </CardContent>
@@ -336,10 +379,10 @@ export default function Generate3DImage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <ProcessingStep step="uploading" label="Preparing Image" icon={Upload} />
-                    <ProcessingStep step="sending" label="Sending to Meshy AI" icon={Upload} />
-                    <ProcessingStep step="processing" label="Generating 3D Model" icon={Loader2} />
-                    <ProcessingStep step="downloading" label="Finalizing Model" icon={CheckCircle2} />
+                    <ProcessingStepComponent step="uploading" label="Preparing Images" icon={Upload} />
+                    <ProcessingStepComponent step="sending" label="Sending to Meshy AI" icon={Upload} />
+                    <ProcessingStepComponent step="processing" label="Generating 3D Model" icon={Loader2} />
+                    <ProcessingStepComponent step="downloading" label="Finalizing Model" icon={CheckCircle2} />
                     {currentStep === 'complete' && (
                       <div className="flex items-center gap-3 text-primary">
                         <CheckCircle2 className="w-8 h-8" />
@@ -357,9 +400,16 @@ export default function Generate3DImage() {
                   {isProcessing && (
                     <>
                       <Progress value={progress} className="w-full" />
-                      <p className="text-sm text-center text-muted-foreground">
-                        {Math.round(progress)}% complete
-                      </p>
+                      <div className="space-y-2">
+                        <p className="text-sm text-center text-muted-foreground">
+                          {Math.round(progress)}% complete
+                        </p>
+                        {progressMessage && (
+                          <p className="text-sm text-center text-foreground font-medium">
+                            {progressMessage}
+                          </p>
+                        )}
+                      </div>
                     </>
                   )}
 
@@ -376,6 +426,17 @@ export default function Generate3DImage() {
                       <p className="text-sm text-destructive/80">{failureReason}</p>
                     </div>
                   )}
+
+                  {currentStep === 'complete' && modelUrl && (
+                    <Button 
+                      onClick={handleDownload}
+                      className="w-full"
+                      size="lg"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download GLB File
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -389,10 +450,11 @@ export default function Generate3DImage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>• High-quality 3D model generation</li>
-                  <li>• PBR materials and textures</li>
-                  <li>• Optimized 30K polygon count</li>
+                  <li>• Multi-angle reconstruction</li>
+                  <li>• High-quality PBR textures</li>
+                  <li>• Automatic remeshing</li>
                   <li>• Processing time: 5-10 minutes</li>
+                  <li>• Best with 2-4 images from different angles</li>
                 </ul>
               </CardContent>
             </Card>
@@ -426,7 +488,7 @@ export default function Generate3DImage() {
                     <div className="text-center space-y-2">
                       <div className="text-5xl">🎨</div>
                       <p className="text-muted-foreground text-sm">
-                        Upload images to generate a 3D model
+                        Upload 1-4 images to generate a 3D model
                       </p>
                     </div>
                   </div>
