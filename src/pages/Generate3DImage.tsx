@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { Upload, Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
-const MESHY_API_KEY = 'msy_BvyXLyq5Qg12HJF4RCdx7Fqs3yPKRBSZ2s8w'; // TODO: Move to backend
+const MESHY_API_KEY = 'msy_dummy_api_key_for_test_mode_12345678'; // TODO: Move to backend
 const MESHY_BASE_URL = 'https://api.meshy.ai/openapi/v1';
 
 type ProcessingStep = 'idle' | 'uploading' | 'sending' | 'processing' | 'downloading' | 'complete' | 'failed';
