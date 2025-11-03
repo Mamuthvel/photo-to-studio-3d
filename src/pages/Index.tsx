@@ -54,7 +54,7 @@ const Index = () => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold">Photo3D Studio</h1>
-                <p className="text-sm text-muted-foreground">Local Photogrammetry Pipeline</p>
+                <p className="text-sm text-muted-foreground">Local Photogrammetry</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -67,7 +67,7 @@ const Index = () => {
               <Link to="/cloud">
                 <Button variant="outline" size="sm">
                   <Cloud className="w-4 h-4 mr-2" />
-                  Cloud Pipeline
+                  Kiri Image Generation 
                 </Button>
               </Link>
             </div>
@@ -77,7 +77,7 @@ const Index = () => {
       
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-[1fr,400px] gap-6">
+        {/* <div className="grid lg:grid-cols-[1fr,400px] gap-6"> */}
           {/* Left Column - Viewer */}
           <div className="space-y-6">
             <div className="h-[600px]">
@@ -96,16 +96,16 @@ const Index = () => {
           </div>
           
           {/* Right Column - Documentation */}
-          <div className="lg:sticky lg:top-24 h-fit">
+          {/* <div className="lg:sticky lg:top-24 h-fit">
             <Documentation />
-          </div>
-        </div>
+          </div> */}
+        {/* </div> */}
       </main>
       
       {/* Footer */}
       <footer className="border-t border-border mt-16 py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>Built with Meshroom, Blender & Three.js</p>
+          <p>Built with Meshy and Model-veiwer</p>
         </div>
       </footer>
     </div>

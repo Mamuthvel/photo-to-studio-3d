@@ -97,7 +97,7 @@ export const ModelViewer = ({ modelUrl, previousModelUrl, isLoading = false }: M
               auto-rotate={autoRotate}
               camera-controls
               camera-orbit="0deg 75deg 2.5m"
-              min-camera-orbit="auto 60deg auto"
+              min-camera-orbit="auto 0deg auto"
               max-camera-orbit="auto 90deg auto"
               style={{ 
                 width: '100%', 

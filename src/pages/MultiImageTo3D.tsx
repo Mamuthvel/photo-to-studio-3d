@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Upload, Loader2, CheckCircle2, XCircle, Clock, Download, Image as ImageIcon, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ModelViewer } from '@/components/ModelViewer';
+import { DropZone } from '@/components/DropZone';
 
 const MESHY_API_KEY = 'msy_5EgIin5cwzjgz48rlA7cCtEw5MnXfRYn88pS';
 const MESHY_BASE_URL = 'https://api.meshy.ai/openapi/v1';
@@ -29,7 +31,10 @@ export default function MultiImageTo3D() {
     { angle: 'back', label: 'Back View', file: null, preview: null },
     { angle: 'top', label: 'Top View', file: null, preview: null },
   ]);
-  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [modelUrl, setModelUrl] = useState<string | null>(
+    localStorage.getItem('lastModelUrl')
+  );
+  const [previousModelUrl, setPreviousModelUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState<ProcessingStep>('idle');
@@ -39,6 +44,42 @@ export default function MultiImageTo3D() {
   const [progressMessage, setProgressMessage] = useState<string>('');
   const [useV6, setUseV6] = useState(true); // Default to Meshy v6
   const [lastRequestData, setLastRequestData] = useState<{images: File[], useV6: boolean} | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [filename, setFilename] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("lastModelUrl");
+    if (saved) setModelUrl(saved);
+  }, []);
+  const handleFileLoaded = (url: string, name: string) => {
+    setLoading(true);
+    // Keep previous model visible during load
+    if (modelUrl) {
+      setPreviousModelUrl(modelUrl);
+    }
+    
+    // Simulate loading time for smooth transition
+    setTimeout(() => {
+      if (modelUrl && modelUrl !== url) {
+        URL.revokeObjectURL(modelUrl);
+      }
+      setModelUrl(url);
+      setFilename(name);
+      setLoading(false);
+    }, 300);
+  };
+  
+  const handleClear = () => {
+    if (modelUrl) {
+      URL.revokeObjectURL(modelUrl);
+    }
+    if (previousModelUrl) {
+      URL.revokeObjectURL(previousModelUrl);
+    }
+    setModelUrl(null);
+    setPreviousModelUrl(null);
+    setFilename(null);
+  };
 
   const handleImageSelect = (angle: AngleType, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -145,12 +186,16 @@ export default function MultiImageTo3D() {
   };
 
   const downloadModel = async (glbUrl: string) => {
+    setLoading(true);
     try {
       setCurrentStep('downloading');
       setEstimatedTime('Downloading model...');
       setProgressMessage('Model ready!');
       setProgress(95);
-
+      if (modelUrl) {
+        setPreviousModelUrl(modelUrl);
+      }
+      localStorage.setItem('lastModelUrl', glbUrl);
       setModelUrl(glbUrl);
       setProgress(100);
       setCurrentStep('complete');
@@ -159,6 +204,8 @@ export default function MultiImageTo3D() {
       toast.success("Your 3D model is ready!");
     } catch (error) {
       throw error;
+    }finally{
+      setLoading(false);
     }
   };
 
@@ -525,7 +572,7 @@ export default function MultiImageTo3D() {
               </Card>
             )}
 
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <span className="text-primary">✨</span>
@@ -541,7 +588,7 @@ export default function MultiImageTo3D() {
                   <li>• Best with 2-4 images from different angles</li>
                 </ul>
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
 
           {/* Right Column - 3D Viewer */}
@@ -554,19 +601,17 @@ export default function MultiImageTo3D() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="h-[calc(100%-5rem)]">
-                {modelUrl ? (
-                  <model-viewer
-                    src={modelUrl}
-                    alt="Generated 3D Model"
-                    auto-rotate
-                    camera-controls
-                    camera-orbit="0deg 75deg 2.5m"
-                    min-camera-orbit="auto 60deg auto"
-                    max-camera-orbit="auto 90deg auto"
-                    style={{ width: '100%', height: '100%' }}
-                    exposure="1"
-                    shadow-intensity="1"
-                  />
+                {modelUrl ? (<>
+                   <ModelViewer 
+                   modelUrl={modelUrl} 
+                   previousModelUrl={previousModelUrl}
+                   isLoading={loading}
+                 />
+                 <DropZone
+              onFileLoaded={handleFileLoaded}
+              currentFile={filename}
+              onClear={handleClear}
+            /></>
                 ) : (
                   <div className="h-full flex items-center justify-center border border-border rounded-lg bg-muted/20">
                     <div className="text-center space-y-2">
