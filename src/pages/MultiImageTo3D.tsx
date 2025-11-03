@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Upload, Loader2, CheckCircle2, XCircle, Clock, Download, Image as ImageIcon, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -35,6 +37,7 @@ export default function MultiImageTo3D() {
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [estimatedTime, setEstimatedTime] = useState<string>('');
   const [progressMessage, setProgressMessage] = useState<string>('');
+  const [useV6, setUseV6] = useState(true); // Default to Meshy v6
 
   const handleImageSelect = (angle: AngleType, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -196,6 +199,7 @@ export default function MultiImageTo3D() {
           should_remesh: true,
           should_texture: true,
           enable_pbr: true,
+          ai_model: useV6 ? 'meshy-6' : 'meshy-5',
         }),
       });
 
@@ -309,6 +313,31 @@ export default function MultiImageTo3D() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Model Version Toggle */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/20">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="model-version" className="text-sm font-medium">
+                      AI Model Version
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {useV6 ? 'Meshy v6 (Latest, Better Quality)' : 'Meshy v5 (Faster)'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Label htmlFor="model-version" className="text-sm text-muted-foreground">
+                      v5
+                    </Label>
+                    <Switch
+                      id="model-version"
+                      checked={useV6}
+                      onCheckedChange={setUseV6}
+                      disabled={isProcessing}
+                    />
+                    <Label htmlFor="model-version" className="text-sm font-medium">
+                      v6
+                    </Label>
+                  </div>
+                </div>
                 {/* Multi-view Upload Slots */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
