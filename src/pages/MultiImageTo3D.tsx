@@ -194,7 +194,7 @@ export default function MultiImageTo3D() {
           should_remesh: true,
           should_texture: true,
           enable_pbr: true,
-          ai_model: modelVersion ? 'meshy-6' : 'meshy-5',
+          ai_model: modelVersion ? 'latest' : 'meshy-5',
         }),
       });
 
