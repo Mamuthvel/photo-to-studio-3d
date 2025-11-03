@@ -8,21 +8,37 @@ import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [previousModelUrl, setPreviousModelUrl] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const handleFileLoaded = (url: string, name: string) => {
+    setIsLoading(true);
+    // Keep previous model visible during load
     if (modelUrl) {
-      URL.revokeObjectURL(modelUrl);
+      setPreviousModelUrl(modelUrl);
     }
-    setModelUrl(url);
-    setFilename(name);
+    
+    // Simulate loading time for smooth transition
+    setTimeout(() => {
+      if (modelUrl && modelUrl !== url) {
+        URL.revokeObjectURL(modelUrl);
+      }
+      setModelUrl(url);
+      setFilename(name);
+      setIsLoading(false);
+    }, 300);
   };
   
   const handleClear = () => {
     if (modelUrl) {
       URL.revokeObjectURL(modelUrl);
     }
+    if (previousModelUrl) {
+      URL.revokeObjectURL(previousModelUrl);
+    }
     setModelUrl(null);
+    setPreviousModelUrl(null);
     setFilename(null);
   };
   
@@ -65,7 +81,11 @@ const Index = () => {
           {/* Left Column - Viewer */}
           <div className="space-y-6">
             <div className="h-[600px]">
-              <ModelViewer modelUrl={modelUrl} />
+              <ModelViewer 
+                modelUrl={modelUrl} 
+                previousModelUrl={previousModelUrl}
+                isLoading={isLoading}
+              />
             </div>
             
             <DropZone 
