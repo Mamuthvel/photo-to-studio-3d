@@ -38,6 +38,7 @@ export default function MultiImageTo3D() {
   const [estimatedTime, setEstimatedTime] = useState<string>('');
   const [progressMessage, setProgressMessage] = useState<string>('');
   const [useV6, setUseV6] = useState(true); // Default to Meshy v6
+  const [lastRequestData, setLastRequestData] = useState<{images: File[], useV6: boolean} | null>(null);
 
   const handleImageSelect = (angle: AngleType, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -161,25 +162,19 @@ export default function MultiImageTo3D() {
     }
   };
 
-  const handleGenerate = async () => {
-    const uploadedImages = imageSlots.filter(slot => slot.file !== null);
-    
-    if (uploadedImages.length === 0) {
-      toast.error("Please upload at least 1 image (2-4 images recommended for best results)");
-      return;
-    }
-
+  const processGeneration = async (imagesToUse: File[], modelVersion: boolean) => {
     setIsProcessing(true);
     setProgress(0);
     setCurrentStep('uploading');
     setFailureReason(null);
     setEstimatedTime('Preparing images...');
     setProgressMessage('Converting images...');
+    setModelUrl(null); // Clear previous model
 
     try {
-      // Convert all uploaded images to base64
+      // Convert all images to base64
       const base64Images = await Promise.all(
-        uploadedImages.map(slot => convertToBase64(slot.file!))
+        imagesToUse.map(file => convertToBase64(file))
       );
       setProgress(20);
 
@@ -199,7 +194,7 @@ export default function MultiImageTo3D() {
           should_remesh: true,
           should_texture: true,
           enable_pbr: true,
-          ai_model: useV6 ? 'meshy-6' : 'meshy-5',
+          ai_model: modelVersion ? 'meshy-6' : 'meshy-5',
         }),
       });
 
@@ -228,6 +223,33 @@ export default function MultiImageTo3D() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleGenerate = async () => {
+    const uploadedImages = imageSlots.filter(slot => slot.file !== null);
+    
+    if (uploadedImages.length === 0) {
+      toast.error("Please upload at least 1 image (2-4 images recommended for best results)");
+      return;
+    }
+
+    // Store the request data for retry
+    setLastRequestData({
+      images: uploadedImages.map(slot => slot.file!),
+      useV6: useV6
+    });
+
+    await processGeneration(uploadedImages.map(slot => slot.file!), useV6);
+  };
+
+  const handleRetry = async () => {
+    if (!lastRequestData) {
+      toast.error("No previous request to retry");
+      return;
+    }
+
+    toast.info("Retrying with same images and settings (Free)");
+    await processGeneration(lastRequestData.images, lastRequestData.useV6);
   };
 
   const handleDownload = () => {
@@ -477,14 +499,27 @@ export default function MultiImageTo3D() {
                   )}
 
                   {currentStep === 'complete' && modelUrl && (
-                    <Button 
-                      onClick={handleDownload}
-                      className="w-full"
-                      size="lg"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download GLB File
-                    </Button>
+                    <div className="space-y-3">
+                      <Button 
+                        onClick={handleDownload}
+                        className="w-full"
+                        size="lg"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download GLB File
+                      </Button>
+                      {lastRequestData && (
+                        <Button 
+                          onClick={handleRetry}
+                          variant="outline"
+                          className="w-full"
+                          size="lg"
+                        >
+                          <Loader2 className="w-4 h-4 mr-2" />
+                          Retry (Free)
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>
