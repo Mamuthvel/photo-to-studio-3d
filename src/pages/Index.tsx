@@ -1,47 +1,50 @@
-import { useState } from 'react';
-import { ModelViewer } from '@/components/ModelViewer';
-import { DropZone } from '@/components/DropZone';
-import { Documentation } from '@/components/Documentation';
-import { Box, Cloud } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+import { useEffect, useState } from "react";
+import { ModelViewer } from "@/components/ModelViewer";
+import { DropZone } from "@/components/DropZone";
+import { Box, Cloud } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [previousModelUrl, setPreviousModelUrl] = useState<string | null>(null);
   const [filename, setFilename] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  
+
+  // Load last generated model when page opens
+  useEffect(() => {
+    const saved = localStorage.getItem("lastModelUrl");
+    if (saved) setModelUrl(saved);
+
+    // Listen to custom event (optional) if other pages dispatch it
+    const onModelUpdated = () => {
+      const fresh = localStorage.getItem("lastModelUrl");
+      if (fresh) setModelUrl(fresh);
+    };
+    window.addEventListener("model-updated", onModelUpdated);
+    return () => window.removeEventListener("model-updated", onModelUpdated);
+  }, []);
+
   const handleFileLoaded = (url: string, name: string) => {
     setIsLoading(true);
-    // Keep previous model visible during load
-    if (modelUrl) {
-      setPreviousModelUrl(modelUrl);
-    }
-    
-    // Simulate loading time for smooth transition
+    if (modelUrl) setPreviousModelUrl(modelUrl);
+
     setTimeout(() => {
-      if (modelUrl && modelUrl !== url) {
-        URL.revokeObjectURL(modelUrl);
-      }
+      if (modelUrl && modelUrl !== url) URL.revokeObjectURL(modelUrl);
       setModelUrl(url);
       setFilename(name);
       setIsLoading(false);
     }, 300);
   };
-  
+
   const handleClear = () => {
-    if (modelUrl) {
-      URL.revokeObjectURL(modelUrl);
-    }
-    if (previousModelUrl) {
-      URL.revokeObjectURL(previousModelUrl);
-    }
+    if (modelUrl) URL.revokeObjectURL(modelUrl);
+    if (previousModelUrl) URL.revokeObjectURL(previousModelUrl);
     setModelUrl(null);
     setPreviousModelUrl(null);
     setFilename(null);
   };
-  
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -67,45 +70,37 @@ const Index = () => {
               <Link to="/cloud">
                 <Button variant="outline" size="sm">
                   <Cloud className="w-4 h-4 mr-2" />
-                  Kiri Image Generation 
+                  Kiri Image Generation
                 </Button>
               </Link>
             </div>
           </div>
         </div>
       </header>
-      
-      {/* Main Content */}
+
+      {/* Main */}
       <main className="container mx-auto px-4 py-8">
-        {/* <div className="grid lg:grid-cols-[1fr,400px] gap-6"> */}
-          {/* Left Column - Viewer */}
-          <div className="space-y-6">
-            <div className="h-[600px]">
-              <ModelViewer 
-                modelUrl={modelUrl} 
-                previousModelUrl={previousModelUrl}
-                isLoading={isLoading}
-              />
-            </div>
-            
-            <DropZone 
-              onFileLoaded={handleFileLoaded}
-              currentFile={filename}
-              onClear={handleClear}
+        <div className="space-y-6">
+          <div className="h-[600px]">
+            <ModelViewer
+              modelUrl={modelUrl}
+              previousModelUrl={previousModelUrl}
+              isLoading={isLoading}
             />
           </div>
-          
-          {/* Right Column - Documentation */}
-          {/* <div className="lg:sticky lg:top-24 h-fit">
-            <Documentation />
-          </div> */}
-        {/* </div> */}
+
+          <DropZone
+            onFileLoaded={handleFileLoaded}
+            currentFile={filename}
+            onClear={handleClear}
+          />
+        </div>
       </main>
-      
+
       {/* Footer */}
       <footer className="border-t border-border mt-16 py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>Built with Meshy and Model-veiwer</p>
+          <p>Built with Meshy and Model-viewer</p>
         </div>
       </footer>
     </div>
