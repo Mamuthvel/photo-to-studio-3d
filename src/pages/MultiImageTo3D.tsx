@@ -371,7 +371,7 @@ export default function MultiImageTo3D() {
           </Link>
         </header>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-[30%_70%] gap-6">
           {/* Left Column - Upload & Controls */}
           <div className="space-y-6">
             <Card>
