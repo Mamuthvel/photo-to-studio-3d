@@ -600,28 +600,32 @@ export default function MultiImageTo3D() {
                   Your generated model will appear here
                 </CardDescription>
               </CardHeader>
-              <CardContent className="h-[calc(100%-5rem)]">
-                {modelUrl ? (<>
-                   <ModelViewer 
-                   modelUrl={modelUrl} 
-                   previousModelUrl={previousModelUrl}
-                   isLoading={loading}
-                 />
-                 <DropZone
-              onFileLoaded={handleFileLoaded}
-              currentFile={filename}
-              onClear={handleClear}
-            /></>
-                ) : (
-                  <div className="h-full flex items-center justify-center border border-border rounded-lg bg-muted/20">
-                    <div className="text-center space-y-2">
-                      <div className="text-5xl">🎨</div>
-                      <p className="text-muted-foreground text-sm">
-                        Upload 1-4 images to generate a 3D model
-                      </p>
+              <CardContent className="h-[calc(100%-5rem)] relative">
+                <div className="h-full">
+                  {modelUrl ? (
+                    <ModelViewer 
+                      modelUrl={modelUrl} 
+                      previousModelUrl={previousModelUrl}
+                      isLoading={loading}
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center border border-border rounded-lg bg-muted/20">
+                      <div className="text-center space-y-2">
+                        <div className="text-5xl">🎨</div>
+                        <p className="text-muted-foreground text-sm">
+                          Upload 1-4 images to generate a 3D model
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+                <div className="absolute bottom-4 right-4 z-50">
+                  <DropZone
+                    onFileLoaded={handleFileLoaded}
+                    currentFile={filename}
+                    onClear={handleClear}
+                  />
+                </div>
               </CardContent>
             </Card>
           </div>
